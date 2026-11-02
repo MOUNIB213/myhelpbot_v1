@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vaultbot_postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-botvault_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-botvault_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-botvault_user} -d ${POSTGRES_DB:-botvault_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vault_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: vaultbot_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vault_net
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vaultbot_telegram
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - backup_data:/app/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vault_net
+
+volumes:
+  postgres_data:
+  redis_data:
+  backup_data:
+
+networks:
+  vault_net:
+    driver: bridge
